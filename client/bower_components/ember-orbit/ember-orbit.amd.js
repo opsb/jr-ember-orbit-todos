@@ -120,11 +120,19 @@ define("ember-orbit/fields/has-one",
         var proxy = this.getLink(key);
 
         if (arguments.length > 1) {
-          if (value !== get(proxy, 'content')) {
-            proxy.setProperties({
-              content: value,
-              promise: this.addLink(key, value)
-            });
+          var currentValue = get(proxy, 'content');
+
+          if (value === null) {
+            value = undefined;
+          }
+
+          if (currentValue !== value) {
+            if (value === undefined) {
+              this.removeLink(key, currentValue);
+            } else {
+              this.addLink(key, value);
+            }
+            set(proxy, 'content', value);
           }
         }
 
@@ -281,7 +289,7 @@ define("ember-orbit/links/link-proxy-mixin",
 
       _linkField: null,
 
-      find: function() {
+      reload: function() {
         var store = get(this, 'store');
         var promise = store.findLinked.call(store,
           get(this, '_ownerType'),
@@ -399,15 +407,17 @@ define("ember-orbit/model",
       addLink: function(field, relatedRecord) {
         var store = get(this, 'store');
         var type = this.constructor.typeKey;
+        var relatedId = relatedRecord ? relatedRecord.primaryId : null;
 
-        return store.addLink(type, this.primaryId, field, relatedRecord.primaryId);
+        return store.addLink(type, this.primaryId, field, relatedId);
       },
 
       removeLink: function(field, relatedRecord) {
         var store = get(this, 'store');
         var type = this.constructor.typeKey;
+        var relatedId = relatedRecord ? relatedRecord.primaryId : null;
 
-        return store.removeLink(type, this.primaryId, field, relatedRecord.primaryId);
+        return store.removeLink(type, this.primaryId, field, relatedId);
       },
 
       remove: function() {
@@ -465,25 +475,23 @@ define("ember-orbit/model",
         var _this = this;
         var primaryKey;
 
-        function evaluateKeys() {
-          _this.eachComputedProperty(function(name, meta) {
-            if (meta.isKey) {
-              meta.name = name;
-              map[name] = meta.options;
-              if (meta.options.primaryKey) {
-                primaryKey = name;
-              }
+        _this.eachComputedProperty(function(name, meta) {
+          if (meta.isKey) {
+            meta.name = name;
+            map[name] = meta.options;
+            if (meta.options.primaryKey) {
+              primaryKey = name;
             }
-          });
-        }
-        evaluateKeys();
+          }
+        });
 
         // Set a single primary key named `id` if no other has been defined
         if (!primaryKey) {
-          this.reopen({
-            id: key({primaryKey: true, defaultValue: uuid})
-          });
-          evaluateKeys();
+          primaryKey = 'id';
+
+          var options = {primaryKey: true, defaultValue: uuid};
+          this.reopen({id: key(options)});
+          map.id = options;
         }
 
         return map;
@@ -1071,8 +1079,37 @@ define("ember-orbit/schema",
         return this._schema.models[type].links[name];
       },
 
-      normalize: function(type, data) {
-        this._schema.normalize(type, data);
+      normalize: function(type, record) {
+        // Normalize links to IDs contained within the `__rel` (i.e. "forward link")
+        // element.
+        this.links(type).forEach(function(link) {
+          if (!record.__rel) {
+            record.__rel = {};
+          }
+
+          var linkValue = record[link];
+          if (linkValue) {
+            if (Ember.isArray(linkValue)) {
+              var rel = record.__rel[link] = {};
+              linkValue.forEach(function(id) {
+                if (typeof id === 'object') {
+                  id = id.primaryId;
+                }
+                rel[id] = true;
+              });
+
+            } else if (typeof linkValue === 'object') {
+              record.__rel[link] = linkValue.primaryId;
+
+            } else {
+              record.__rel[link] = linkValue;
+            }
+
+            delete record[link];
+          }
+        });
+
+        this._schema.normalize(type, record);
       }
     });
 
@@ -1463,6 +1500,10 @@ define("ember-orbit/store",
       },
 
       _lookupFromData: function(type, data) {
+        if (Ember.isNone(data)) {
+          return null;
+        }
+
         var pk = get(this, 'schema').primaryKey(type);
         if (Ember.isArray(data)) {
           var ids = data.map(function(recordData) {

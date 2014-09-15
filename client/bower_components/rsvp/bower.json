@@ -1,0 +1,5 @@
+{
+  "name": "rsvp",
+  "version": "2.0.4",
+  "main": "./rsvp.js"
+}

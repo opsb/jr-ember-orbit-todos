@@ -12,8 +12,8 @@
     "ember-qunit": "0.1.8",
     "ember-qunit-notifications": "0.0.4",
     "qunit": "~1.15.0",
-    "orbit.js": "~0.5.1",
-    "ember-orbit": "~0.3.0",
+    "orbit.js": "orbitjs/orbit.js",
+    "ember-orbit": "0.4.1",
     "normalize-css": "~3.0.1",
     "bootstrap-sass-official": "v3.2.0+2"
   }

@@ -64749,6 +64749,7 @@ define("orbit-common/memory-source",
       /////////////////////////////////////////////////////////////////////////////
 
       _transform: function(operation) {
+        this._transformRelatedInverseLinks(operation);
         this._cache.transform(operation);
       },
 
@@ -64775,9 +64776,9 @@ define("orbit-common/memory-source",
             notFound = [];
 
             for (var i = 0, l = id.length; i < l; i++) {
-              resId =  id[i];
+              resId = id[i];
 
-              res =  _this.retrieve([type, resId]);
+              res = _this.retrieve([type, resId]);
 
               if (res) {
                 result.push(res);
@@ -64849,6 +64850,141 @@ define("orbit-common/memory-source",
       /////////////////////////////////////////////////////////////////////////////
       // Internals
       /////////////////////////////////////////////////////////////////////////////
+
+      _transformRelatedInverseLinks: function(operation) {
+        var _this = this;
+        var path = operation.path;
+        var type = path[0];
+        var record;
+        var key;
+        var linkDef;
+        var linkValue;
+        var inverseLinkOp;
+
+        if (operation.op === 'add') {
+          if (path.length > 3 && path[2] === '__rel') {
+
+            key = path[3];
+            linkDef = this.schema.models[type].links[key];
+
+            if (linkDef.inverse) {
+              _this._transformAddLink(
+                linkDef.model,
+                linkDef.type === 'hasMany' ? path[4] : operation.value,
+                linkDef.inverse,
+                path[1]
+              );
+            }
+
+          } else if (path.length === 2) {
+
+            record = operation.value;
+            if (record.__rel) {
+              Object.keys(record.__rel).forEach(function(key) {
+                linkDef = _this.schema.models[type].links[key];
+
+                if (linkDef.inverse) {
+                  if (linkDef.type === 'hasMany') {
+                    Object.keys(record.__rel[key]).forEach(function(id) {
+                      _this._transformAddLink(
+                        linkDef.model,
+                        id,
+                        linkDef.inverse,
+                        path[1]
+                      );
+                    });
+
+                  } else {
+                    var id = record.__rel[key];
+
+                    if (!isNone(id)) {
+                      _this._transformAddLink(
+                        linkDef.model,
+                        id,
+                        linkDef.inverse,
+                        path[1]
+                      );
+                    }
+                  }
+                }
+              });
+            }
+          }
+
+        } else if (operation.op === 'remove') {
+
+          if (path.length > 3 && path[2] === '__rel') {
+
+            key = path[3];
+            linkDef = this.schema.models[type].links[key];
+
+            if (linkDef.inverse) {
+              var relId;
+              if (linkDef.type === 'hasMany') {
+                relId = path[4];
+              } else {
+                relId = this.retrieve(path);
+              }
+
+              if (relId) {
+                _this._transformRemoveLink(
+                  linkDef.model,
+                  relId,
+                  linkDef.inverse,
+                  path[1]
+                );
+              }
+            }
+
+          } else if (path.length === 2) {
+
+            record = this.retrieve(path);
+            if (record.__rel) {
+              Object.keys(record.__rel).forEach(function(key) {
+                linkDef = _this.schema.models[type].links[key];
+
+                if (linkDef.inverse) {
+                  if (linkDef.type === 'hasMany') {
+                    Object.keys(record.__rel[key]).forEach(function(id) {
+                      _this._transformRemoveLink(
+                        linkDef.model,
+                        id,
+                        linkDef.inverse,
+                        path[1]
+                      );
+                    });
+
+                  } else {
+                    var id = record.__rel[key];
+
+                    if (!isNone(id)) {
+                      _this._transformRemoveLink(
+                        linkDef.model,
+                        id,
+                        linkDef.inverse,
+                        path[1]
+                      );
+                    }
+                  }
+                }
+              });
+            }
+          }
+        }
+      },
+
+      _transformAddLink: function(type, id, key, value) {
+        if (this._cache.retrieve([type, id])) {
+          this._cache.transform(this._addLinkOp(type, id, key, value));
+        }
+      },
+
+      _transformRemoveLink: function(type, id, key, value) {
+        var op = this._removeLinkOp(type, id, key, value);
+        if (this._cache.retrieve(op.path)) {
+          this._cache.transform(op);
+        }
+      },
 
       _filter: function(type, query) {
         var all = [],
@@ -65441,17 +65577,19 @@ define("orbit-common/serializer",
     __exports__["default"] = Serializer;
   });
 define("orbit-common/source", 
-  ["orbit/document","orbit/transformable","orbit/requestable","orbit/lib/assert","orbit/lib/stubs","orbit/lib/objects","./cache","exports"],
-  function(__dependency1__, __dependency2__, __dependency3__, __dependency4__, __dependency5__, __dependency6__, __dependency7__, __exports__) {
+  ["orbit/main","orbit/document","orbit/transformable","orbit/requestable","orbit/lib/assert","orbit/lib/stubs","orbit/lib/objects","./cache","exports"],
+  function(__dependency1__, __dependency2__, __dependency3__, __dependency4__, __dependency5__, __dependency6__, __dependency7__, __dependency8__, __exports__) {
     "use strict";
-    var Document = __dependency1__["default"];
-    var Transformable = __dependency2__["default"];
-    var Requestable = __dependency3__["default"];
-    var assert = __dependency4__.assert;
-    var required = __dependency5__.required;
-    var Class = __dependency6__.Class;
-    var expose = __dependency6__.expose;
-    var Cache = __dependency7__["default"];
+    var Orbit = __dependency1__["default"];
+    var Document = __dependency2__["default"];
+    var Transformable = __dependency3__["default"];
+    var Requestable = __dependency4__["default"];
+    var assert = __dependency5__.assert;
+    var required = __dependency6__.required;
+    var Class = __dependency7__.Class;
+    var expose = __dependency7__.expose;
+    var isNone = __dependency7__.isNone;
+    var Cache = __dependency8__["default"];
 
     /**
      `Source` is an abstract base class to be extended by other sources.
@@ -65520,12 +65658,21 @@ define("orbit-common/source",
           relId = this.retrieveLink(type, id, link);
         }
 
-        if (relId) {
+        if (this._isLinkEmpty(linkDef.type, relId)) {
+          return new Orbit.Promise(function(resolve) {
+            resolve(relId);
+          });
+
+        } else if (relId) {
           return this.find(relType, relId);
 
         } else {
           return this.findLink(type, id, link).then(function(relId) {
-            return _this.find(relType, relId);
+            if (_this._isLinkEmpty(linkDef.type, relId)) {
+              return relId;
+            } else {
+              return _this.find(relType, relId);
+            }
           });
         }
       },
@@ -65546,14 +65693,10 @@ define("orbit-common/source",
 
       _update: function(type, data) {
         var record = this.normalize(type, data);
+        var id = this.getId(type, record);
+        var path = [type, id];
 
-        var id = this.getId(type, record),
-            path = [type, id],
-            _this = this;
-
-        return this.transform({op: 'replace', path: path, value: record}).then(function() {
-          return _this.retrieve(path);
-        });
+        return this.transform({op: 'replace', path: path, value: record});
       },
 
       _patch: function(type, id, property, value) {
@@ -65562,11 +65705,9 @@ define("orbit-common/source",
           id = this.getId(type, record);
         }
 
-        return this.transform({
-          op: 'replace',
-          path: [type, id].concat(Document.prototype.deserializePath(property)),
-          value: value
-        });
+        var path = [type, id].concat(Document.prototype.deserializePath(property));
+
+        return this.transform({op: 'replace', path: path, value: value});
       },
 
       _remove: function(type, id) {
@@ -65575,95 +65716,39 @@ define("orbit-common/source",
           id = this.getId(type, record);
         }
 
-        return this.transform({op: 'remove', path: [type, id]});
+        var path = [type, id];
+
+        return this.transform({op: 'remove', path: path});
       },
 
       _addLink: function(type, id, key, value) {
-        var linkOp = function(linkDef, type, id, key, value) {
-          var path = [type, id, '__rel', key];
-          if (linkDef.type === 'hasMany') {
-            path.push(value);
-            value = true;
-          }
-          return {
-            op: 'add',
-            path: path,
-            value: value
-          };
-        };
-
-        var linkDef = this.schema.models[type].links[key],
-            ops,
-            _this = this;
-
         // Normalize ids
         if (id !== null && typeof id === 'object') {
           var record = this.normalize(type, id);
           id = this.getId(type, record);
         }
         if (value !== null && typeof value === 'object') {
+          var linkDef = this.schema.models[type].links[key];
           var relatedRecord = this.normalize(linkDef.model, value);
           value = this.getId(linkDef.model, relatedRecord);
         }
 
-        // Add link to primary resource
-        ops = [linkOp(linkDef, type, id, key, value)];
-
-        // Add inverse link if necessary
-        if (linkDef.inverse) {
-          var inverseLinkDef = this.schema.models[linkDef.model].links[linkDef.inverse];
-          ops.push(linkOp(inverseLinkDef, linkDef.model, value, linkDef.inverse, id));
-        }
-
-        return this.transform(ops).then(function() {
-          return _this.retrieve([type, id]);
-        });
+        return this.transform(this._addLinkOp(type, id, key, value));
       },
 
       _removeLink: function(type, id, key, value) {
-        var unlinkOp = function(linkDef, type, id, key, value) {
-          var path = [type, id, '__rel', key];
-          if (linkDef.type === 'hasMany') path.push(value);
-          return {
-            op: 'remove',
-            path: path
-          };
-        };
-
-        var linkDef = this.schema.models[type].links[key],
-            ops,
-            record,
-            _this = this;
-
         // Normalize ids
         if (id !== null && typeof id === 'object') {
-          record = this.normalize(type, id);
+          var record = this.normalize(type, id);
           id = this.getId(type, record);
         }
         if (value !== null && typeof value === 'object') {
+          var linkDef = this.schema.models[type].links[key];
           var relatedRecord = this.normalize(linkDef.model, value);
           value = this.getId(linkDef.model, relatedRecord);
         }
 
-        // Remove link from primary resource
-        ops = [unlinkOp(linkDef, type, id, key, value)];
-
-        // Remove inverse link if necessary
-        if (linkDef.inverse) {
-          if (value === undefined) {
-            if (record === undefined) {
-              record = this.retrieve(type, id);
-            }
-            value = record.__rel[key];
-          }
-
-          var inverseLinkDef = this.schema.models[linkDef.model].links[linkDef.inverse];
-          ops.push(unlinkOp(inverseLinkDef, linkDef.model, value, linkDef.inverse, id));
-        }
-
-        return this.transform(ops).then(function() {
-          return _this.retrieve([type, id]);
-        });
+        return this.transform(this._removeLinkOp(type, id, key, value));
       },
 
       /////////////////////////////////////////////////////////////////////////////
@@ -65700,6 +65785,45 @@ define("orbit-common/source",
           val = Object.keys(val);
         }
         return val;
+      },
+
+      /////////////////////////////////////////////////////////////////////////////
+      // Internals
+      /////////////////////////////////////////////////////////////////////////////
+
+      _isLinkEmpty: function(linkType, linkValue) {
+        return (linkType === 'hasMany' && linkValue && linkValue.length === 0 ||
+                linkType === 'hasOne' && isNone(linkValue));
+      },
+
+      _addLinkOp: function(type, id, key, value) {
+        var linkDef = this.schema.models[type].links[key];
+        var path = [type, id, '__rel', key];
+
+        if (linkDef.type === 'hasMany') {
+          path.push(value);
+          value = true;
+        }
+
+        return {
+          op: 'add',
+          path: path,
+          value: value
+        };
+      },
+
+      _removeLinkOp: function(type, id, key, value) {
+        var linkDef = this.schema.models[type].links[key];
+        var path = [type, id, '__rel', key];
+
+        if (linkDef.type === 'hasMany') {
+          path.push(value);
+        }
+
+        return {
+          op: 'remove',
+          path: path
+        };
       }
     });
 
@@ -66867,11 +66991,19 @@ define("ember-orbit/fields/has-one",
         var proxy = this.getLink(key);
 
         if (arguments.length > 1) {
-          if (value !== get(proxy, 'content')) {
-            proxy.setProperties({
-              content: value,
-              promise: this.addLink(key, value)
-            });
+          var currentValue = get(proxy, 'content');
+
+          if (value === null) {
+            value = undefined;
+          }
+
+          if (currentValue !== value) {
+            if (value === undefined) {
+              this.removeLink(key, currentValue);
+            } else {
+              this.addLink(key, value);
+            }
+            set(proxy, 'content', value);
           }
         }
 
@@ -67028,7 +67160,7 @@ define("ember-orbit/links/link-proxy-mixin",
 
       _linkField: null,
 
-      find: function() {
+      reload: function() {
         var store = get(this, 'store');
         var promise = store.findLinked.call(store,
           get(this, '_ownerType'),
@@ -67146,15 +67278,17 @@ define("ember-orbit/model",
       addLink: function(field, relatedRecord) {
         var store = get(this, 'store');
         var type = this.constructor.typeKey;
+        var relatedId = relatedRecord ? relatedRecord.primaryId : null;
 
-        return store.addLink(type, this.primaryId, field, relatedRecord.primaryId);
+        return store.addLink(type, this.primaryId, field, relatedId);
       },
 
       removeLink: function(field, relatedRecord) {
         var store = get(this, 'store');
         var type = this.constructor.typeKey;
+        var relatedId = relatedRecord ? relatedRecord.primaryId : null;
 
-        return store.removeLink(type, this.primaryId, field, relatedRecord.primaryId);
+        return store.removeLink(type, this.primaryId, field, relatedId);
       },
 
       remove: function() {
@@ -67212,25 +67346,23 @@ define("ember-orbit/model",
         var _this = this;
         var primaryKey;
 
-        function evaluateKeys() {
-          _this.eachComputedProperty(function(name, meta) {
-            if (meta.isKey) {
-              meta.name = name;
-              map[name] = meta.options;
-              if (meta.options.primaryKey) {
-                primaryKey = name;
-              }
+        _this.eachComputedProperty(function(name, meta) {
+          if (meta.isKey) {
+            meta.name = name;
+            map[name] = meta.options;
+            if (meta.options.primaryKey) {
+              primaryKey = name;
             }
-          });
-        }
-        evaluateKeys();
+          }
+        });
 
         // Set a single primary key named `id` if no other has been defined
         if (!primaryKey) {
-          this.reopen({
-            id: key({primaryKey: true, defaultValue: uuid})
-          });
-          evaluateKeys();
+          primaryKey = 'id';
+
+          var options = {primaryKey: true, defaultValue: uuid};
+          this.reopen({id: key(options)});
+          map.id = options;
         }
 
         return map;
@@ -67818,8 +67950,37 @@ define("ember-orbit/schema",
         return this._schema.models[type].links[name];
       },
 
-      normalize: function(type, data) {
-        this._schema.normalize(type, data);
+      normalize: function(type, record) {
+        // Normalize links to IDs contained within the `__rel` (i.e. "forward link")
+        // element.
+        this.links(type).forEach(function(link) {
+          if (!record.__rel) {
+            record.__rel = {};
+          }
+
+          var linkValue = record[link];
+          if (linkValue) {
+            if (Ember.isArray(linkValue)) {
+              var rel = record.__rel[link] = {};
+              linkValue.forEach(function(id) {
+                if (typeof id === 'object') {
+                  id = id.primaryId;
+                }
+                rel[id] = true;
+              });
+
+            } else if (typeof linkValue === 'object') {
+              record.__rel[link] = linkValue.primaryId;
+
+            } else {
+              record.__rel[link] = linkValue;
+            }
+
+            delete record[link];
+          }
+        });
+
+        this._schema.normalize(type, record);
       }
     });
 
@@ -68210,6 +68371,10 @@ define("ember-orbit/store",
       },
 
       _lookupFromData: function(type, data) {
+        if (Ember.isNone(data)) {
+          return null;
+        }
+
         var pk = get(this, 'schema').primaryKey(type);
         if (Ember.isArray(data)) {
           var ids = data.map(function(recordData) {
