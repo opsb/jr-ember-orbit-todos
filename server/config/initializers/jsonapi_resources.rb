@@ -1,0 +1,1 @@
+JSONAPI.configuration.json_key_format = :camelized

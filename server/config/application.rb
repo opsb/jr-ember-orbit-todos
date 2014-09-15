@@ -29,8 +29,6 @@ module Todos
 
     config.action_dispatch.perform_deep_munge = false
 
-    require Rails.root.join("lib", "rack", "json_formatter")
-    config.middleware.use Rack::JsonFormatter
   end
   
 end
