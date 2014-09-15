@@ -1,0 +1,14 @@
+<h2>Users</h2>
+
+<ul>
+	{{#each model}}
+		<li>{{firstName}} {{lastName}}</li>
+	{{/each}}
+</ul>
+
+<form>
+	<label>First name {{input value=newUser.firstName}}</label>
+	<label>Last name {{input value=newUser.lastName}}</label>
+	<label>Email {{input value=newUser.email}}</label>
+	<button {{action 'addUser'}}>Add</button>
+</form>

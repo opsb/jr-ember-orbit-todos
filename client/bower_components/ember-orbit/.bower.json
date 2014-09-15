@@ -1,0 +1,16 @@
+{
+  "name": "ember-orbit",
+  "version": "0.3.0",
+  "main": "./ember-orbit.js",
+  "homepage": "https://github.com/orbitjs/bower-ember-orbit",
+  "_release": "0.3.0",
+  "_resolution": {
+    "type": "version",
+    "tag": "0.3.0",
+    "commit": "e41f8b3734e27f9f5444f8e71c0d331aa62f4b30"
+  },
+  "_source": "git://github.com/orbitjs/bower-ember-orbit.git",
+  "_target": "~0.3.0",
+  "_originalSource": "ember-orbit",
+  "_direct": true
+}

@@ -1,0 +1,13 @@
+<h1>Todos</h1>
+
+<form>
+	{{input value=title placeholder="title"}}
+	{{input value=description placeholder="description"}}
+	<button {{action 'addTodo'}}>Add</button>
+</form>
+
+<ul>
+	{{#each model}}
+		<li>{{title}} {{description}}</li>
+	{{/each}}
+</ul>

@@ -1,0 +1,16 @@
+{
+  "name": "orbit.js",
+  "version": "0.5.1",
+  "main": "./orbit.js",
+  "homepage": "https://github.com/orbitjs/bower-orbit",
+  "_release": "0.5.1",
+  "_resolution": {
+    "type": "version",
+    "tag": "0.5.1",
+    "commit": "13afa403055d05d4c6f61411b79af32d70dc9f20"
+  },
+  "_source": "git://github.com/orbitjs/bower-orbit.git",
+  "_target": "~0.5.1",
+  "_originalSource": "orbit.js",
+  "_direct": true
+}
