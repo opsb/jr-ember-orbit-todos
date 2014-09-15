@@ -10,17 +10,12 @@ export default Ember.Route.extend({
 			var self = this;
 			var controller = this.get("controller");
 
-			// this.store.add('todo', controller.getProperties("title", "description")).then(function(todo){
-			// 	console.log("setting user");
-			// 	window.todo = todo;
-			// 	todo.set("user_id", controller.get("model.id"));
-			// });
-			// debugger
 			this.store.add('todo', {
 				title: controller.get("title"),
-				description: controller.get("description"),
-				user_id: controller.get("model.id")
-			})
+				description: controller.get("description")
+			}).then(function(todo){
+				todo.set("user", self.modelFor('user'));
+            })
 
 		}
 	}

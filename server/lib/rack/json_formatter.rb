@@ -17,6 +17,8 @@ class Rack::JsonFormatter
 			body = format_response(extract_body(body)).split
 		end
 
+		puts extract_body(body)
+
 		return [status, headers, body] 
 	end
 

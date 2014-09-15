@@ -9,5 +9,5 @@ export default EO.Model.extend({
 	id:  key({primaryKey: true, defaultValue: Orbit.uuid}),
 	title: attr('string'),
 	description: attr('string'),
-	user: hasOne('user', {inverse: 'todo'})
+	user: hasOne('user', {inverse: 'todos'})
 });
